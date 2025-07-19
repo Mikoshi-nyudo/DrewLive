@@ -4,7 +4,6 @@ import aiohttp
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import platform
-import re
 
 API_URL = "https://ppv.to/api/streams"
 
@@ -127,9 +126,14 @@ async def grab_m3u8_from_iframe(page, iframe_url):
 
 def build_m3u(streams, url_map):
     lines = ['#EXTM3U url-tvg="https://tinyurl.com/DrewLive002-epg"']
-    added_urls = set()
+    seen_names = set()
 
     for s in streams:
+        name_lower = s["name"].strip().lower()
+        if name_lower in seen_names:
+            continue  # skip duplicates by display name
+        seen_names.add(name_lower)
+
         unique_key = f"{s['name']}::{s['category']}::{s['iframe']}"
         urls = url_map.get(unique_key, [])
 
@@ -142,14 +146,12 @@ def build_m3u(streams, url_map):
         logo = CATEGORY_LOGOS.get(orig_category, "")
         tvg_id = CATEGORY_TVG_IDS.get(orig_category, "Sports.Dummy.us")
 
-        for url in urls:
-            if url in added_urls:
-                continue
-            added_urls.add(url)
+        # Use first valid URL only to avoid multiple entries with same name
+        url = next(iter(urls))
 
-            lines.append(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-logo="{logo}" group-title="{final_group}",{s["name"]}')
-            lines.extend(CUSTOM_HEADERS)
-            lines.append(url)
+        lines.append(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-logo="{logo}" group-title="{final_group}",{s["name"]}')
+        lines.extend(CUSTOM_HEADERS)
+        lines.append(url)
 
     return "\n".join(lines)
 
@@ -167,7 +169,7 @@ async def main():
             if iframe:
                 streams.append({"name": name, "iframe": iframe, "category": cat})
 
-    # Deduplicate by exact name, case-insensitive
+    # Deduplicate streams by name (case-insensitive) before scraping
     seen_names = set()
     deduped_streams = []
     for s in streams:
