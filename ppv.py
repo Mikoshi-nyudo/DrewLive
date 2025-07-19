@@ -196,6 +196,16 @@ async def main():
             if iframe:
                 streams.append({"name": name, "iframe": iframe, "category": cat})
 
+    # ✅ Deduplicate streams by name (case-insensitive)
+    seen_names = set()
+    deduped_streams = []
+    for s in streams:
+        name_key = s["name"].strip().lower()
+        if name_key not in seen_names:
+            seen_names.add(name_key)
+            deduped_streams.append(s)
+    streams = deduped_streams
+
     if not streams:
         print("🚫 No valid streams found.")
         return
