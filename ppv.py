@@ -1,9 +1,10 @@
 import asyncio
 from playwright.async_api import async_playwright
 import aiohttp
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 import platform
+import re
 
 API_URL = "https://ppv.to/api/streams"
 
@@ -56,26 +57,6 @@ GROUP_RENAME_MAP = {
     "Boxing": "PPVLand - Boxing",
     "Darts": "PPVLand - Darts"
 }
-
-def parse_backend_time(timestr):
-    try:
-        h, m, s = map(int, timestr.strip().split(":"))
-        now_utc = datetime.utcnow().replace(tzinfo=ZoneInfo("UTC"))
-        return now_utc.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(hours=h, minutes=m, seconds=s)
-    except Exception as e:
-        print(f"❌ Failed to parse time '{timestr}': {e}")
-        return None
-
-def convert_to_local_str(dt_obj):
-    try:
-        local_tz = ZoneInfo("America/Denver")
-        dt_local = dt_obj.astimezone(local_tz)
-        is_windows = platform.system() == "Windows"
-        format_str = "%b %#d, %Y %#I:%M %p" if is_windows else "%b %-d, %Y %-I:%M %p"
-        return dt_local.strftime(format_str)
-    except Exception as e:
-        print(f"❌ Failed to format time: {e}")
-        return None
 
 async def check_m3u8_url(url):
     try:
@@ -182,21 +163,11 @@ async def main():
             continue
         for stream in category.get("streams", []):
             iframe = stream.get("iframe")
-            channel = stream.get("channel", "")
             name = stream.get("name", "Unnamed Event")
-
-            if any(char.isdigit() for char in channel):
-                time_part = channel.strip().split()[-1]
-                dt = parse_backend_time(time_part)
-                if dt:
-                    local_time = convert_to_local_str(dt)
-                    if local_time:
-                        name += f" ({local_time})"
-
             if iframe:
                 streams.append({"name": name, "iframe": iframe, "category": cat})
 
-    # ✅ Deduplicate streams by name (case-insensitive)
+    # Deduplicate by exact name, case-insensitive
     seen_names = set()
     deduped_streams = []
     for s in streams:
